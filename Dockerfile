@@ -21,7 +21,7 @@ FROM docker.io/langchain/langgraph-api:3.11
 
 # -- Install UV --
 # First install curl, then install UV using the standalone installer
-RUN apt-get update && apt-get install -y curl && \
+RUN apt-get update && apt-get install -y curl poppler-utils tesseract-ocr && \
     curl -LsSf https://astral.sh/uv/install.sh | sh && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 ENV PATH="/root/.local/bin:$PATH"
@@ -61,3 +61,4 @@ RUN uv pip uninstall --system pip setuptools wheel && \
 # -- End of pip removal --
 
 WORKDIR /deps/backend
+VOLUME /app/chroma_db
