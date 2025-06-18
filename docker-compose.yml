@@ -1,6 +1,3 @@
-volumes:
-  langgraph-data:
-    driver: local
 services:
   langgraph-redis:
     image: docker.io/redis:6
@@ -41,4 +38,14 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY}
       REDIS_URI: redis://langgraph-redis:6379
+
       POSTGRES_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@langgraph-postgres:5432/rag?sslmode=disable
+    volumes:
+      - chroma-data:/app/chroma_db
+
+volumes:
+  langgraph-data:
+    driver: local
+  chroma-data:
+    driver: local
+ main
