@@ -1,29 +1,30 @@
+"""Agent graph orchestrating web search and optional RAG."""
 import os
 
-from agent.tools_and_schemas import SearchQueryList, Reflection
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage
-from langgraph.types import Send
-from langgraph.graph import StateGraph
-from langgraph.graph import START, END
-from langchain_core.runnables import RunnableConfig
 from google.genai import Client
+from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.graph import END, StateGraph
+from langgraph.types import Send
 
+from agent.configuration import Configuration
+from agent.prompts import (
+    answer_instructions,
+    get_current_date,
+    query_writer_instructions,
+    reflection_instructions,
+    web_searcher_instructions,
+)
+from agent.rag_graph import create_rag_graph
 from agent.state import (
     OverallState,
     QueryGenerationState,
     ReflectionState,
     WebSearchState,
 )
-from agent.configuration import Configuration
-from agent.prompts import (
-    get_current_date,
-    query_writer_instructions,
-    web_searcher_instructions,
-    reflection_instructions,
-    answer_instructions,
-)
-from langchain_google_genai import ChatGoogleGenerativeAI
+from agent.tools_and_schemas import Reflection, SearchQueryList
 from agent.utils import (
     get_citations,
     get_research_topic,
@@ -273,10 +274,16 @@ builder.add_node("generate_query", generate_query)
 builder.add_node("web_research", web_research)
 builder.add_node("reflection", reflection)
 builder.add_node("finalize_answer", finalize_answer)
+builder.add_node("rag_subgraph", create_rag_graph())
 
-# Set the entrypoint as `generate_query`
-# This means that this node is the first one called
-builder.add_edge(START, "generate_query")
+# Determine whether to use documents or web search
+def route_entry(state: OverallState):
+    """Decide which workflow to execute."""
+    if state.get("use_documents"):
+        return "rag_subgraph"
+    return "generate_query"
+
+builder.set_conditional_entry_point(route_entry, ["rag_subgraph", "generate_query"])
 # Add conditional edge to continue with search queries in a parallel branch
 builder.add_conditional_edges(
     "generate_query", continue_to_web_research, ["web_research"]
@@ -289,5 +296,6 @@ builder.add_conditional_edges(
 )
 # Finalize the answer
 builder.add_edge("finalize_answer", END)
+builder.add_edge("rag_subgraph", END)
 
 graph = builder.compile(name="pro-search-agent")
