@@ -1,5 +1,8 @@
-import os
 
+import os
+from __future__ import annotations
+
+"""Create and handle embeddings for documents."""
 
 class ConfigError(Exception):
     """Raised when required configuration is missing."""
@@ -35,3 +38,8 @@ class EmbeddingService:
             return 768
         return None
 
+
+
+
+pass
+ main
