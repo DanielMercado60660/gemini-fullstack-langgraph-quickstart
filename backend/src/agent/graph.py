@@ -2,6 +2,8 @@
 import os
 
 from dotenv import load_dotenv
+
+from core.secrets import get_secret
 from google.genai import Client
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
@@ -17,7 +19,8 @@ from agent.prompts import (
     reflection_instructions,
     web_searcher_instructions,
 )
-from agent.rag_graph import create_rag_graph
+# Updated import to reflect the new function name in rag_graph.py
+from agent.rag_graph import create_rag_graph_runnable
 from agent.state import (
     OverallState,
     QueryGenerationState,
@@ -34,11 +37,16 @@ from agent.utils import (
 
 load_dotenv()
 
-if os.getenv("GEMINI_API_KEY") is None:
-    raise ValueError("GEMINI_API_KEY is not set")
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
+GEMINI_API_KEY_SECRET_ID = "gemini-api-key" # Or get from env var: os.getenv("GEMINI_API_KEY_SECRET_ID", "gemini-api-key")
+
+GEMINI_API_KEY = get_secret(GCP_PROJECT_ID, GEMINI_API_KEY_SECRET_ID)
+if GEMINI_API_KEY is None:
+    raise ValueError(f"Could not retrieve secret {GEMINI_API_KEY_SECRET_ID} from project {GCP_PROJECT_ID}. "
+                     "Ensure GCP_PROJECT_ID is set and the secret exists with appropriate permissions.")
 
 # Used for Google Search API
-genai_client = Client(api_key=os.getenv("GEMINI_API_KEY"))
+genai_client = Client(api_key=GEMINI_API_KEY)
 
 
 # Nodes
@@ -66,7 +74,7 @@ def generate_query(state: OverallState, config: RunnableConfig) -> QueryGenerati
         model=configurable.query_generator_model,
         temperature=1.0,
         max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
+        api_key=GEMINI_API_KEY,
     )
     structured_llm = llm.with_structured_output(SearchQueryList)
 
@@ -168,7 +176,7 @@ def reflection(state: OverallState, config: RunnableConfig) -> ReflectionState:
         model=reasoning_model,
         temperature=1.0,
         max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
+        api_key=GEMINI_API_KEY,
     )
     result = llm.with_structured_output(Reflection).invoke(formatted_prompt)
 
@@ -247,7 +255,7 @@ def finalize_answer(state: OverallState, config: RunnableConfig):
         model=reasoning_model,
         temperature=0,
         max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
+        api_key=GEMINI_API_KEY,
     )
     result = llm.invoke(formatted_prompt)
 
@@ -266,36 +274,50 @@ def finalize_answer(state: OverallState, config: RunnableConfig):
     }
 
 
-# Create our Agent Graph
-builder = StateGraph(OverallState, config_schema=Configuration)
+# This function will now be called from main.py where processor and store are available
+def create_main_graph_runnable(document_processor, vector_store):
+    builder = StateGraph(OverallState, config_schema=Configuration)
 
-# Define the nodes we will cycle between
-builder.add_node("generate_query", generate_query)
-builder.add_node("web_research", web_research)
-builder.add_node("reflection", reflection)
-builder.add_node("finalize_answer", finalize_answer)
-builder.add_node("rag_subgraph", create_rag_graph())
+    # Define the nodes we will cycle between
+    builder.add_node("generate_query", generate_query)
+    builder.add_node("web_research", web_research)
+    builder.add_node("reflection", reflection)
+    builder.add_node("finalize_answer", finalize_answer)
 
-# Determine whether to use documents or web search
-def route_entry(state: OverallState):
-    """Decide which workflow to execute."""
-    if state.get("use_documents"):
-        return "rag_subgraph"
-    return "generate_query"
+    # Create the RAG subgraph runnable, passing the document_processor and vector_store
+    rag_subgraph_runnable = create_rag_graph_runnable(
+        document_processor_instance=document_processor,
+        vector_store_instance=vector_store
+    )
+    builder.add_node("rag_subgraph", rag_subgraph_runnable)
 
-builder.set_conditional_entry_point(route_entry, ["rag_subgraph", "generate_query"])
-# Add conditional edge to continue with search queries in a parallel branch
-builder.add_conditional_edges(
-    "generate_query", continue_to_web_research, ["web_research"]
-)
-# Reflect on the web research
-builder.add_edge("web_research", "reflection")
-# Evaluate the research
-builder.add_conditional_edges(
-    "reflection", evaluate_research, ["web_research", "finalize_answer"]
-)
-# Finalize the answer
-builder.add_edge("finalize_answer", END)
-builder.add_edge("rag_subgraph", END)
+    # Determine whether to use documents or web search
+    def route_entry(state: OverallState):
+        """Decide which workflow to execute."""
+        if state.get("use_documents"):
+            # If using documents, OverallState needs to be compatible with RagGraphState input.
+            # The RAG graph expects `gcs_bucket_name` in its input state if it's not
+            # to use the environment variable default.
+            # If `OverallState` has `rag_gcs_bucket_name` (or similar), it should be mapped.
+            # For now, we assume if `use_documents` is true, the RAG graph will use
+            # the RAG_GCS_BUCKET_NAME from env or one passed in `initial_state` for the graph.
+            return "rag_subgraph"
+        return "generate_query"
 
-graph = builder.compile(name="pro-search-agent")
+    builder.set_conditional_entry_point(route_entry, ["rag_subgraph", "generate_query"])
+
+    builder.add_conditional_edges(
+        "generate_query", continue_to_web_research, ["web_research"]
+    )
+    builder.add_edge("web_research", "reflection")
+    builder.add_conditional_edges(
+        "reflection", evaluate_research, ["web_research", "finalize_answer"]
+    )
+    builder.add_edge("finalize_answer", END)
+    # After RAG subgraph finishes, it hits END for that subgraph.
+    # The main graph then also ends this path.
+    builder.add_edge("rag_subgraph", END)
+
+    return builder.compile(name="pro-search-agent")
+
+# No global 'graph' instance here anymore. It's created in main.py.

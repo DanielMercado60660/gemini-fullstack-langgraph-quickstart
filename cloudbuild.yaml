@@ -1,0 +1,72 @@
+steps:
+  # Install Backend Dependencies & Run Tests
+  - name: 'python:3.11' # Match Python version with pyproject.toml
+    entrypoint: /bin/bash
+    args:
+      - -c
+      - |
+        set -e # Exit immediately if a command exits with a non-zero status.
+        pip install poetry==1.8.3 # Pinning poetry version for consistency
+        cd backend
+        poetry install --no-interaction --no-ansi # Installs dev dependencies by default
+        echo "Running backend tests..."
+        poetry run pytest tests/unit_tests/ # Run tests
+    id: 'Backend Tests'
+
+  # Install Frontend Dependencies & Run Tests/Build
+  - name: 'node:18' # Using Node 18 as specified
+    entrypoint: npm
+    args: ['install']
+    dir: 'frontend'
+    id: 'Install Frontend Dependencies'
+  - name: 'node:18'
+    entrypoint: npm
+    args: ['run', 'build'] # Assumes 'npm run build' generates files in 'frontend/dist'
+    dir: 'frontend'
+    id: 'Build Frontend'
+  # Frontend tests are not defined in package.json, skipping for now.
+  # - name: 'node:18'
+  #   entrypoint: npm
+  #   args: ['test']
+  #   dir: 'frontend'
+  #   id: 'Frontend Tests'
+
+  # Build Docker Image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_IMAGE_REPO_NAME}/app:latest'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_IMAGE_REPO_NAME}/app:$SHORT_SHA'
+      - '.' # Dockerfile in root
+    id: 'Build Docker Image'
+    # This step depends on the frontend build being complete if Dockerfile copies from frontend/dist
+    waitFor: ['Build Frontend']
+
+  # Push Docker Image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_IMAGE_REPO_NAME}/app:latest'
+    id: 'Push Docker Image (latest)'
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_IMAGE_REPO_NAME}/app:$SHORT_SHA'
+    id: 'Push Docker Image (SHA)'
+
+# Define images to be built and pushed
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_IMAGE_REPO_NAME}/app:latest'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_IMAGE_REPO_NAME}/app:$SHORT_SHA'
+
+# Define substitutions
+substitutions:
+  _REGION: 'us-central1' # Default region for Artifact Registry
+  _IMAGE_REPO_NAME: 'gemini-fullstack-app' # Default repository name
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  # machineType: 'E2_HIGHCPU_8' # Optional: For faster builds
+timeout: '1200s' # 20 minutes, adjust as needed
