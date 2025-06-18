@@ -18,6 +18,8 @@ dependencies = [
     "langgraph-api",
     "fastapi",
     "google-genai",
+    "pypdf",
+    "scikit-learn",
 ]
 
 
