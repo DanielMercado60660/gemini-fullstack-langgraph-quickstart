@@ -11,18 +11,18 @@ services:
       timeout: 1s
       retries: 5
   langgraph-postgres:
-    image: docker.io/postgres:16
+    image: docker.io/pgvector/pgvector:pg16
     container_name: langgraph-postgres
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rag
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - langgraph-data:/var/lib/postgresql/data
     healthcheck:
-      test: pg_isready -U postgres
+      test: pg_isready -U ${POSTGRES_USER}
       start_period: 10s
       timeout: 1s
       retries: 5
@@ -41,4 +41,4 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY}
       REDIS_URI: redis://langgraph-redis:6379
-      POSTGRES_URI: postgres://postgres:postgres@langgraph-postgres:5432/postgres?sslmode=disable
+      POSTGRES_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@langgraph-postgres:5432/rag?sslmode=disable
