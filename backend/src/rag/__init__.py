@@ -1,4 +1,7 @@
 
+"""RAG (Retrieval Augmented Generation) utilities."""
+
+
 """RAG utilities."""
 from __future__ import annotations
 
@@ -11,4 +14,5 @@ __all__ = ["DocumentProcessor", "OCRRequiredError"]
 
 
 pass
-main
+
+ main

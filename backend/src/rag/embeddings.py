@@ -1,7 +1,13 @@
 
+"""Utilities for embedding models."""
+
+
+class ConfigError(Exception):
+    """Raised when environment configuration is invalid."""
+
 import os
 from __future__ import annotations
-
+#This may need to be updated REVIEWME
 """Create and handle embeddings for documents."""
 
 class ConfigError(Exception):
@@ -42,4 +48,4 @@ class EmbeddingService:
 
 
 pass
- main
+main
