@@ -1,6 +1,9 @@
-"""Utility for turning PDF files into LangChain document chunks."""
 
+"""Utility for turning PDF files into LangChain document chunks."""
 from __future__ import annotations
+
+"""Process documents before indexing in the vector store."""
+
 
 import os
 from pathlib import Path
@@ -66,3 +69,7 @@ class DocumentProcessor:
             doc.metadata["source"] = str(path)
             doc.metadata["chunk_index"] = i
         return chunks
+
+
+pass
+ main
