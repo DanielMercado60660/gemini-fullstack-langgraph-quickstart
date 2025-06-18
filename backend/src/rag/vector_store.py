@@ -1,3 +1,4 @@
+
 """Hybrid vector store combining Chroma and PGVector."""
 
 from __future__ import annotations
@@ -53,3 +54,8 @@ class HybridVectorStore:
     def persist(self) -> None:
         """Persist the hot store."""
         self._hot_store.persist()
+
+
+
+pass
+ main
